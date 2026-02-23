@@ -23,6 +23,7 @@ Documentation | GitHub Actions | AppVeyor | Regression | Codecov
 - [Branches](#branches)
 - [Community](#community)
 - [Contributing](#contributing-we-need-your-help)
+- [Running the Python Demo](#running-the-python-demo)
 - [License](#license)
 
 ## Introduction
@@ -108,6 +109,29 @@ with solving reported issues, especially those labelled with:
 
 Any feedback from users and developers, even simple questions about how things work
 or why they were done a certain way, carries value and can be used to improve the library.
+
+## Running the Python Demo
+
+The [PyGIL](python/) demo is an interactive Streamlit app that showcases image processing
+(resize, flip, rotate, color conversion) using the Python implementation of GIL concepts.
+
+**Prerequisites:** Python 3.8+
+
+1. Install PyGIL and demo dependencies:
+
+   ```shell
+   cd python
+   pip install -e .
+   pip install -r demo/requirements.txt
+   ```
+
+2. Run the demo:
+
+   ```shell
+   streamlit run demo/app.py
+   ```
+
+   The app will open in your browser. Upload an image and apply transformations in real-time.
 
 ## License
 
