@@ -1,0 +1,17 @@
+# PyGIL Demo Application Dependencies
+# Requirements for the Streamlit demo application
+
+# Streamlit - Web application framework
+streamlit>=1.20.0
+
+# NumPy - Array operations
+numpy>=1.21.0
+
+# Pillow - Image I/O
+pillow>=9.0.0
+
+# SciPy - Image processing
+scipy>=1.7.0
+
+# Note: The pygil library should be installed separately
+# Install with: pip install -e ..

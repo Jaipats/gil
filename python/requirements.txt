@@ -1,0 +1,11 @@
+# PyGIL Library Dependencies
+# Core dependencies for the PyGIL image processing library
+
+# NumPy - Core array operations and data structures
+numpy>=1.21.0
+
+# Pillow - Image I/O for various formats (PNG, JPEG, BMP, TIFF)
+pillow>=9.0.0
+
+# SciPy - Image processing operations (interpolation, convolution, rotation)
+scipy>=1.7.0
