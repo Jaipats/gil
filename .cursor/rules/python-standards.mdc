@@ -1,0 +1,12 @@
+---
+globs: *.py
+alwaysApply: false
+---
+
+- All Python code must follow PEP 8 and PEP 257
+- Functions must have type hints for all parameters and return values
+- No magic numbers — use named constants or Enum
+- Maximum function length: 40 lines. Refactor beyond that.
+- All public APIs must have docstrings with Args, Returns, Raises sections (Google style)
+- Use pathlib.Path, not os.path
+- Prefer dataclasses or Pydantic models over plain dicts for structured data

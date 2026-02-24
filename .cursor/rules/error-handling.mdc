@@ -1,0 +1,250 @@
+---
+description: Python error handling standards for enterprise codebases
+globs: ["**/*.py"]
+alwaysApply: true
+---
+
+# Python Error Handling Standards
+
+## 1. Exception Specificity
+
+- **Never** use bare `except:` or `except Exception:` unless re-raising or at a top-level boundary handler
+- Always catch the most specific exception type available
+- When catching multiple exceptions, group related ones logically
+
+```python
+# ❌ Bad
+try:
+    result = process_image(data)
+except:
+    pass
+
+# ✅ Good
+try:
+    result = process_image(data)
+except ValueError as e:
+    logger.error("Invalid image data", extra={"error": str(e)})
+    raise ImageProcessingError("Image data is malformed") from e
+except IOError as e:
+    logger.error("Image read failed", extra={"path": str(path), "error": str(e)})
+    raise ImageLoadError(f"Could not read image at {path}") from e
+```
+
+---
+
+## 2. Custom Domain Exceptions
+
+- Define a base exception class per module or service boundary
+- All domain-specific exceptions must inherit from the module base
+- Include context in exception messages — never raise with empty strings
+
+```python
+# src/exceptions.py
+class GILError(Exception):
+    """Base exception for all GIL wrapper errors."""
+
+class ImageLoadError(GILError):
+    """Raised when an image cannot be loaded from disk or memory."""
+
+class ImageProcessingError(GILError):
+    """Raised when a GIL C++ processing operation fails."""
+
+class ValidationError(GILError):
+    """Raised when input validation fails before processing."""
+```
+
+---
+
+## 3. C++ Binding Exception Handling
+
+- All calls into C++ bindings via pybind11 must be wrapped — never let raw `RuntimeError` or `SystemError` propagate to the application layer
+- Map C++ exception types to Python domain exceptions explicitly
+- Log the original C++ error string before re-raising
+
+```python
+# ❌ Bad
+def apply_filter(image_data: bytes) -> bytes:
+    return _gil_bindings.apply_filter(image_data)
+
+# ✅ Good
+def apply_filter(image_data: bytes) -> bytes:
+    """Apply GIL filter via C++ binding.
+
+    Raises:
+        ImageProcessingError: If the C++ binding raises a RuntimeError.
+        ValidationError: If image_data is empty or malformed.
+    """
+    if not image_data:
+        raise ValidationError("image_data must not be empty")
+    try:
+        return _gil_bindings.apply_filter(image_data)
+    except RuntimeError as e:
+        logger.error("C++ GIL binding failed", extra={"binding": "apply_filter", "error": str(e)})
+        raise ImageProcessingError("Filter operation failed in native library") from e
+    except SystemError as e:
+        logger.critical("C++ binding crashed", extra={"binding": "apply_filter", "error": str(e)})
+        raise ImageProcessingError("Native library encountered a fatal error") from e
+```
+
+---
+
+## 4. Structured Logging — Never `print()`
+
+- Use `structlog` or the standard `logging` module with a JSON formatter
+- All log calls must include structured `extra={}` context — no f-string-only messages
+- Log levels must be used correctly:
+  - `DEBUG`: internal state, variable values
+  - `INFO`: normal operations, lifecycle events
+  - `WARNING`: recoverable unexpected states
+  - `ERROR`: operation failed, will be caught and handled
+  - `CRITICAL`: system-level failure, likely requires intervention
+
+```python
+import structlog
+logger = structlog.get_logger(__name__)
+
+# ❌ Bad
+print(f"Failed to process {filename}")
+
+# ✅ Good
+logger.error("Image processing failed", filename=filename, user_id=user_id, stage="filter")
+```
+
+---
+
+## 5. I/O Operations
+
+- All file, network, and database operations must be wrapped in try/except
+- Use `pathlib.Path` exclusively — validate existence before reading
+- Always close resources using `with` statements or `contextlib`
+
+```python
+from pathlib import Path
+
+# ❌ Bad
+def read_image(path: str) -> bytes:
+    return open(path, "rb").read()
+
+# ✅ Good
+def read_image(path: Path) -> bytes:
+    """Read raw image bytes from disk.
+
+    Raises:
+        ValidationError: If path does not exist or is not a file.
+        ImageLoadError: If the file cannot be read.
+    """
+    if not path.exists() or not path.is_file():
+        raise ValidationError(f"Image path does not exist or is not a file: {path}")
+    try:
+        with path.open("rb") as f:
+            return f.read()
+    except PermissionError as e:
+        logger.error("Permission denied reading image", path=str(path))
+        raise ImageLoadError(f"Permission denied: {path}") from e
+    except OSError as e:
+        logger.error("OS error reading image", path=str(path), error=str(e))
+        raise ImageLoadError(f"Could not read file: {path}") from e
+```
+
+---
+
+## 6. Exception Chaining — Always Use `from`
+
+- When re-raising a new exception from a caught one, always use `raise NewError(...) from original_error`
+- This preserves the full traceback chain and is critical for debugging in production
+
+```python
+# ❌ Bad — loses original traceback
+except ValueError:
+    raise ImageProcessingError("Bad input")
+
+# ✅ Good — preserves chain
+except ValueError as e:
+    raise ImageProcessingError("Bad input") from e
+```
+
+---
+
+## 7. No Silent Failures
+
+- Never swallow exceptions without at minimum a log at `WARNING` level
+- If an exception is intentionally suppressed (e.g., optional cleanup), add an inline comment explaining why
+- `contextlib.suppress` is acceptable only for truly non-critical cleanup paths
+
+```python
+# ❌ Bad
+try:
+    cache.delete(key)
+except Exception:
+    pass
+
+# ✅ Acceptable — with justification
+import contextlib
+with contextlib.suppress(KeyError):
+    # Cache miss on delete is not an error — key may have already expired
+    cache.delete(key)
+```
+
+---
+
+## 8. Top-Level Boundary Handlers (Streamlit / API Layer)
+
+- At the top of Streamlit page functions or API route handlers, implement a catch-all that:
+  - Catches `GILError` subclasses and displays user-friendly messages
+  - Catches unexpected exceptions, logs them at CRITICAL, and shows a generic error UI
+  - Never exposes stack traces or internal paths to the end user
+
+```python
+# app/pages/process.py
+def render_processing_page() -> None:
+    try:
+        result = run_pipeline(st.session_state.uploaded_file)
+        st.image(result)
+    except ValidationError as e:
+        st.error(f"Invalid input: {e}")
+        logger.warning("User input validation failed", error=str(e))
+    except ImageProcessingError as e:
+        st.error("Processing failed. Please try a different image or contact support.")
+        logger.error("Pipeline processing error", error=str(e))
+    except Exception as e:
+        st.error("An unexpected error occurred. Our team has been notified.")
+        logger.critical("Unhandled exception in processing page", error=str(e), exc_info=True)
+```
+
+---
+
+## 9. Result Typing for Complex Flows (Optional but Recommended)
+
+- For pipelines with multiple failure modes, consider using a `Result` pattern with `dataclasses` to avoid exception-as-control-flow
+
+```python
+from dataclasses import dataclass
+from typing import Generic, TypeVar
+
+T = TypeVar("T")
+
+@dataclass
+class Success(Generic[T]):
+    value: T
+
+@dataclass
+class Failure:
+    error: GILError
+    message: str
+
+ProcessingResult = Success[bytes] | Failure
+```
+
+---
+
+## 10. Enforcement Checklist
+
+Before committing any Python file, verify:
+
+- [ ] No bare `except:` or silent `pass` in except blocks
+- [ ] All new exceptions inherit from the module base class
+- [ ] All C++ binding calls are wrapped with domain exception translation
+- [ ] Logging uses structured fields, not f-string messages alone
+- [ ] All `from` chains preserved on re-raises
+- [ ] No stack traces or internal paths exposed to UI layer
+- [ ] I/O operations use `with` blocks and validate paths before opening
