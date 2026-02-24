@@ -1,4 +1,5 @@
 ---
+description: Python standards for enterprise codebases
 globs: *.py
 alwaysApply: false
 ---

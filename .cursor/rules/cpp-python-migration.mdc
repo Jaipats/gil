@@ -1,0 +1,13 @@
+---
+description: C++ to Python migration standards (dataclasses, numpy, type hints, pytest, docstrings)
+alwaysApply: true
+---
+
+# C++ to Python Migration Rules
+
+- Always translate C++ code into Python 3.11+ syntax.
+- Use Python `dataclasses` for C++ `structs`.
+- Use `numpy` arrays where C++ `std::vector` is used for mathematical operations.
+- Include strict type hinting (PEP 484) on all Python functions.
+- Generate `pytest` unit tests for every translated module.
+- Add Python docstrings explaining the original C++ business logic.

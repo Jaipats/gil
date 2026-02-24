@@ -1,0 +1,13 @@
+---
+description: Security standards for all project files
+alwaysApply: true
+---
+
+# Security
+
+- **Secrets** — Never hardcode credentials, API keys, or secrets. Use environment variables or a vault.
+- **Paths** — Validate and sandbox all file path inputs (no path traversal).
+- **Uploads** — Size-limit and type-validate uploaded files before processing.
+- **Logging** — Do not log sensitive data (PII, file contents, credentials).
+- **Dependencies** — Pin with hashes in requirements.txt.
+- **CI** — Run bandit; no HIGH severity issues permitted.
